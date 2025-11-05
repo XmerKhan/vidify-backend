@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
-import { getYouTubeVideo } from "./utils/youtube.js";
-import { getTikTokVideo } from "./utils/tiktok.js";
-import { getInstagramVideo } from "./utils/instagram.js";
-import { getFacebookVideo } from "./utils/facebook.js";
+import { getYouTubeVideo } from "./src/utils/youtube.js";
+import { getTikTokVideo } from "./src/utils/tiktok.js";
+import { getInstagramVideo } from "./src/utils/instagram.js";
+import { getFacebookVideo } from "./src/utils/facebook.js";
 
 const app = express();
 app.use(cors());
