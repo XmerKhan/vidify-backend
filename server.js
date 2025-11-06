@@ -1,99 +1,49 @@
 import express from "express";
-import cors from "cors";
 import fetch from "node-fetch";
-import ytdl from "ytdl-core";
+import cors from "cors";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
 
-// Helper: clean URLs
-function cleanUrl(url) {
-  return url.split("?")[0].replace(/\/$/, "");
-}
+const PORT = process.env.PORT || 10000;
 
-// 🌐 Auto Detect Platform
-app.post("/api/detect", async (req, res) => {
+// ✅ YouTube Downloader Route
+app.get("/api/youtube", async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: "Missing URL" });
+
   try {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "No URL provided" });
+    // Extract YouTube video ID from the link
+    const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+    const videoId = match ? match[1] : null;
+    if (!videoId) return res.status(400).json({ error: "Invalid YouTube URL" });
 
-    const clean = cleanUrl(url);
+    const apiUrl = `https://youtube-video-fast-downloader-24-7.p.rapidapi.com/get-videos-info/${videoId}`;
 
-    // 🎥 YouTube
-    if (clean.includes("youtube.com") || clean.includes("youtu.be")) {
-      const info = await ytdl.getInfo(clean);
-      const format = ytdl.chooseFormat(info.formats, { quality: "highest" });
-      return res.json({
-        platform: "YouTube",
-        title: info.videoDetails.title,
-        thumbnail: info.videoDetails.thumbnails.pop().url,
-        downloadUrl: format.url,
-        quality: format.qualityLabel || "1080p",
-      });
-    }
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        "x-rapidapi-host": "youtube-video-fast-downloader-24-7.p.rapidapi.com",
+        "x-rapidapi-key": process.env.RAPID_API_KEY,
+      },
+    });
 
-    // 📸 Instagram
-    if (clean.includes("instagram.com")) {
-      const api = await fetch(
-        `https://api.lamadava.com/v1/media?url=${encodeURIComponent(clean)}&apikey=free_public`
-      );
-      const data = await api.json();
-
-      if (!data || !data.video) {
-        return res.status(400).json({ error: "Failed to fetch Instagram video" });
-      }
-
-      return res.json({
-        platform: "Instagram",
-        title: data.caption || "Instagram Reel",
-        thumbnail: data.preview || data.thumbnail || "",
-        downloadUrl: data.video,
-        quality: "HD",
-      });
-    }
-
-    // 🎵 TikTok (no watermark)
-    if (clean.includes("tiktok.com")) {
-      const response = await fetch(
-        `https://www.tikwm.com/api/?url=${encodeURIComponent(clean)}`
-      );
-      const data = await response.json();
-      return res.json({
-        platform: "TikTok",
-        title: data.data.title,
-        thumbnail: data.data.cover,
-        downloadUrl: data.data.play,
-        quality: "HD",
-      });
-    }
-
-    // 📘 Facebook
-    if (clean.includes("facebook.com")) {
-      const fb = await fetch(
-        `https://facebook-video-scraper.vercel.app/api?url=${encodeURIComponent(clean)}`
-      );
-      const data = await fb.json();
-      return res.json({
-        platform: "Facebook",
-        title: data.title || "Facebook Video",
-        thumbnail: data.thumbnail,
-        downloadUrl: data.sd || data.hd,
-        quality: "HD",
-      });
-    }
-
-    return res.status(400).json({ error: "Unsupported platform" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Server Error" });
+    const data = await response.json();
+    res.json({
+      success: true,
+      title: data.title,
+      thumbnail: data.thumbnail,
+      duration: data.duration,
+      formats: data.adaptiveFormats || data.formats || [],
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch YouTube video data" });
   }
 });
 
-// 🟢 Root
 app.get("/", (req, res) => {
-  res.send("✅ Vidify Backend is live and working fine!");
+  res.send("✅ YouTube Backend is Live and Working!");
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server started on ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
