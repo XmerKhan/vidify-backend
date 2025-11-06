@@ -1,38 +1,99 @@
 import express from "express";
 import cors from "cors";
-import { getYouTubeVideo } from "./utils/youtube.js";
-import { getTikTokVideo } from "./utils/tiktok.js";
-import { getInstagramVideo } from "./utils/instagram.js";
-import { getFacebookVideo } from "./utils/facebook.js";
+import fetch from "node-fetch";
+import ytdl from "ytdl-core";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/api/download", async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Video URL required" });
+// Helper: clean URLs
+function cleanUrl(url) {
+  return url.split("?")[0].replace(/\/$/, "");
+}
 
+// 🌐 Auto Detect Platform
+app.post("/api/detect", async (req, res) => {
   try {
-    let data;
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      data = await getYouTubeVideo(url);
-    } else if (url.includes("tiktok.com")) {
-      data = await getTikTokVideo(url);
-    } else if (url.includes("instagram.com")) {
-      data = await getInstagramVideo(url);
-    } else if (url.includes("facebook.com")) {
-      data = await getFacebookVideo(url);
-    } else {
-      return res.status(400).json({ error: "Unsupported platform" });
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "No URL provided" });
+
+    const clean = cleanUrl(url);
+
+    // 🎥 YouTube
+    if (clean.includes("youtube.com") || clean.includes("youtu.be")) {
+      const info = await ytdl.getInfo(clean);
+      const format = ytdl.chooseFormat(info.formats, { quality: "highest" });
+      return res.json({
+        platform: "YouTube",
+        title: info.videoDetails.title,
+        thumbnail: info.videoDetails.thumbnails.pop().url,
+        downloadUrl: format.url,
+        quality: format.qualityLabel || "1080p",
+      });
     }
 
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch video" });
+    // 📸 Instagram
+    if (clean.includes("instagram.com")) {
+      const api = await fetch(
+        `https://api.lamadava.com/v1/media?url=${encodeURIComponent(clean)}&apikey=free_public`
+      );
+      const data = await api.json();
+
+      if (!data || !data.video) {
+        return res.status(400).json({ error: "Failed to fetch Instagram video" });
+      }
+
+      return res.json({
+        platform: "Instagram",
+        title: data.caption || "Instagram Reel",
+        thumbnail: data.preview || data.thumbnail || "",
+        downloadUrl: data.video,
+        quality: "HD",
+      });
+    }
+
+    // 🎵 TikTok (no watermark)
+    if (clean.includes("tiktok.com")) {
+      const response = await fetch(
+        `https://www.tikwm.com/api/?url=${encodeURIComponent(clean)}`
+      );
+      const data = await response.json();
+      return res.json({
+        platform: "TikTok",
+        title: data.data.title,
+        thumbnail: data.data.cover,
+        downloadUrl: data.data.play,
+        quality: "HD",
+      });
+    }
+
+    // 📘 Facebook
+    if (clean.includes("facebook.com")) {
+      const fb = await fetch(
+        `https://facebook-video-scraper.vercel.app/api?url=${encodeURIComponent(clean)}`
+      );
+      const data = await fb.json();
+      return res.json({
+        platform: "Facebook",
+        title: data.title || "Facebook Video",
+        thumbnail: data.thumbnail,
+        downloadUrl: data.sd || data.hd,
+        quality: "HD",
+      });
+    }
+
+    return res.status(400).json({ error: "Unsupported platform" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Server Error" });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Vidify backend running on port ${PORT}`));
+// 🟢 Root
+app.get("/", (req, res) => {
+  res.send("✅ Vidify Backend is live and working fine!");
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server started on ${PORT}`));
